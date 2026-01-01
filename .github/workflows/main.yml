@@ -1,0 +1,75 @@
+name: Build Kernel for Xiaomi Pad 5 (Nabu)
+
+on:
+  workflow_dispatch: # 允许你手动点击按钮触发编译
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ubuntu:22.04 # 使用纯净的 Ubuntu 22.04 环境
+
+    steps:
+    - name: Checkout Source Code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1 # 浅克隆，速度更快
+
+    - name: Install Dependencies
+      run: |
+        apt update
+        apt install -y build-essential bc bison flex libssl-dev libncurses-dev git wget \
+        python3 python3-pip ca-certificates lsb-release software-properties-common gnupg
+        
+        # 安装 Clang 17 (解决你本地版本过低的问题)
+        wget https://apt.llvm.org/llvm.sh
+        chmod +x llvm.sh
+        ./llvm.sh 17
+        
+        # 安装交叉编译工具
+        apt install -y clang-17 lld-17 llvm-17 gcc-aarch64-linux-gnu
+
+    - name: Configure and Build Kernel
+      run: |
+        # 设置所有环境变量 (解决你本地 export 不生效的问题)
+        export ARCH=arm64
+        export SUBARCH=arm64
+        export CROSS_COMPILE=aarch64-linux-gnu-
+        export CC=clang-17
+        export CXX=clang++-17
+        export LD=ld.lld-17
+        export AR=llvm-ar-17
+        export NM=llvm-nm-17
+        export OBJCOPY=llvm-objcopy-17
+        export OBJDUMP=llvm-objdump-17
+        export STRIP=llvm-strip-17
+        export LLVM=1
+        export LLVM_IAS=1
+
+        # 清理
+        make mrproper
+
+        # 生成配置 (复刻你刚才的命令)
+        make defconfig sm8150.config
+
+        # 开始编译 (自动使用所有核心)
+        echo "开始编译内核..."
+        make Image Image.gz dtbs modules -j$(nproc)
+
+        # 整理输出文件
+        echo "打包文件..."
+        mkdir -p output/boot
+        mkdir -p output/modules
+        
+        # 复制内核镜像
+        cp arch/arm64/boot/Image.gz output/boot/
+        # 复制设备树 DTB
+        cp arch/arm64/boot/dts/qcom/sm8150-xiaomi-nabu.dtb output/boot/
+        
+        # 安装并打包模块
+        make modules_install INSTALL_MOD_PATH=$(pwd)/output/modules
+        
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: nabu-kernel-build
+        path: output/
