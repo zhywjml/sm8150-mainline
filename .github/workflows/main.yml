@@ -1,18 +1,18 @@
 name: Build Kernel for Xiaomi Pad 5 (Nabu)
 
 on:
-  workflow_dispatch: # 允许你手动点击按钮触发编译
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: ubuntu:22.04 # 使用纯净的 Ubuntu 22.04 环境
+    container: ubuntu:22.04
 
     steps:
     - name: Checkout Source Code
       uses: actions/checkout@v4
       with:
-        fetch-depth: 1 # 浅克隆，速度更快
+        fetch-depth: 1
 
     - name: Install Dependencies
       run: |
@@ -20,7 +20,7 @@ jobs:
         apt install -y build-essential bc bison flex libssl-dev libncurses-dev git wget \
         python3 python3-pip ca-certificates lsb-release software-properties-common gnupg
         
-        # 安装 Clang 17 (解决你本地版本过低的问题)
+        # 安装 Clang 17
         wget https://apt.llvm.org/llvm.sh
         chmod +x llvm.sh
         ./llvm.sh 17
@@ -28,30 +28,46 @@ jobs:
         # 安装交叉编译工具
         apt install -y clang-17 lld-17 llvm-17 gcc-aarch64-linux-gnu
 
+        # -------------------------------------------------------
+        # 【关键修复】创建软链接，让系统能找到 clang
+        # -------------------------------------------------------
+        ln -s /usr/bin/clang-17 /usr/bin/clang
+        ln -s /usr/bin/clang++-17 /usr/bin/clang++
+        ln -s /usr/bin/ld.lld-17 /usr/bin/ld.lld
+        ln -s /usr/bin/llvm-ar-17 /usr/bin/llvm-ar
+        ln -s /usr/bin/llvm-nm-17 /usr/bin/llvm-nm
+        ln -s /usr/bin/llvm-objcopy-17 /usr/bin/llvm-objcopy
+        ln -s /usr/bin/llvm-objdump-17 /usr/bin/llvm-objdump
+        ln -s /usr/bin/llvm-strip-17 /usr/bin/llvm-strip
+        
+        # 验证一下
+        clang --version
+
     - name: Configure and Build Kernel
       run: |
-        # 设置所有环境变量 (解决你本地 export 不生效的问题)
+        # 设置环境变量
         export ARCH=arm64
         export SUBARCH=arm64
         export CROSS_COMPILE=aarch64-linux-gnu-
-        export CC=clang-17
-        export CXX=clang++-17
-        export LD=ld.lld-17
-        export AR=llvm-ar-17
-        export NM=llvm-nm-17
-        export OBJCOPY=llvm-objcopy-17
-        export OBJDUMP=llvm-objdump-17
-        export STRIP=llvm-strip-17
+        # 因为做了软链接，这里直接用 clang 即可，不用带 -17 后缀了
+        export CC=clang
+        export CXX=clang++
+        export LD=ld.lld
+        export AR=llvm-ar
+        export NM=llvm-nm
+        export OBJCOPY=llvm-objcopy
+        export OBJDUMP=llvm-objdump
+        export STRIP=llvm-strip
         export LLVM=1
         export LLVM_IAS=1
 
         # 清理
         make mrproper
 
-        # 生成配置 (复刻你刚才的命令)
+        # 生成配置
         make defconfig sm8150.config
 
-        # 开始编译 (自动使用所有核心)
+        # 开始编译
         echo "开始编译内核..."
         make Image Image.gz dtbs modules -j$(nproc)
 
